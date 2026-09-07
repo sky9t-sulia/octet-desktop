@@ -1,0 +1,34 @@
+# Dependencies and build output
+node_modules
+dist
+dist-ssr
+*.local
+
+# The Rust side keeps its own: src-tauri/.gitignore covers target/ and the
+# generated capability schemas.
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Local configuration and secrets, which never belong in here
+.env
+.env.*
+!.env.example
+
+# Editor and OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

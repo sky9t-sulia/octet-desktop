@@ -1,0 +1,424 @@
+/* Tailwind, theme and utilities only.
+ *
+ * Preflight is deliberately NOT imported. The design this app reproduces is
+ * laid out in the browser's default content-box: a row written 42px tall with a
+ * 2px border really occupies 46px, and every bordered box in the design is
+ * spaced on that basis. Tailwind's preflight sets `box-sizing: border-box` on
+ * everything, which would silently shrink every one of them by its own border. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* ── The palette ───────────────────────────────────────────────────────
+ * Every colour the interface uses, named once — this block is the only place
+ * a hex literal appears in the app. Everything downstream refers to these by
+ * their utility class (`bg-panel`, `text-dim`, `border-rule`), including the
+ * state-dependent choices, which pick a class name rather than a value. */
+@theme {
+  /* Ink and paper */
+  --color-ink: #23231f; /* near-black: keylines, headings, dark fills */
+  --color-paper: #e3e1d4; /* the window's ground */
+  --color-panel: #efede2; /* sidebar, bars, footers */
+  --color-card: #f6f4ea; /* cards, fields, rows */
+
+  /* Rules, from lightest to heaviest */
+  --color-rule-soft: #e0ddce; /* row dividers inside a list */
+  --color-rule: #cbc8b8; /* the ordinary border */
+  --color-rule-mid: #b0ad9d; /* keycaps, dashed drop targets */
+
+  /* Type, from faintest to darkest */
+  --color-faint: #a8a698; /* a toggle's unlit half */
+  --color-dim: #8b8a7c; /* small caps labels, counts */
+  --color-mute: #6b6a5e; /* secondary lines */
+  --color-slate: #4a493f; /* folder names, window glyphs */
+
+  /* States */
+  --color-hover-row: #edebe0; /* a list row under the pointer */
+  --color-hover-panel: #e5e2d5; /* a sidebar row under the pointer */
+  --color-hover-btn: #d8d5c7; /* a window button under the pointer */
+  --color-hover-face: #e9e7dc; /* a raised button under the pointer */
+  --color-empty: #e9e7dc; /* an unwritten save slot */
+  --color-selected: #e2dfd0; /* the row or category you are on */
+  --color-shadow: #b9b6a6; /* the hard drop shadow */
+
+  /* The accent, and what reads on it */
+  --color-accent: #c0202f;
+  --color-accent-deep: #8f1723;
+  --color-on-accent: #f4f2e8;
+
+  /* The dark room a cartridge runs in */
+  --color-void: #0e0e0c;
+  --color-void-rule: #2a2a26;
+  --color-void-dim: #7e7c70;
+
+  /* Layered inks. These sit over artwork, so they are translucent rather
+   * than mixed — a flat equivalent would be wrong over every other tint. */
+  --color-caption: rgba(20, 20, 17, 0.72); /* a capture's label strip */
+  --color-scrim: rgba(14, 14, 12, 0.76); /* behind the pause and save modals */
+  --color-scrim-soft: rgba(14, 14, 12, 0.62); /* behind the settings window */
+  --color-cast: rgba(8, 8, 6, 0.55); /* the shadow a modal throws */
+  --color-cast-soft: rgba(8, 8, 6, 0.5); /* the same, under the settings window */
+
+  /* Cartridge tints, picked per title. See TINT_BG in library/fixtures.ts. */
+  --color-tint-red: #c0202f;
+  --color-tint-blue: #2f5fa8;
+  --color-tint-green: #3d8b52;
+  --color-tint-amber: #b3811c;
+  --color-tint-violet: #6b4a9e;
+  --color-tint-slate: #2b2b2b;
+
+  /* The two faces. `pixel` is the interface; `screen` is for data and
+   * small caps, where it is narrower and reads at 11px. */
+  --font-pixel: "Press Start 2P", ui-monospace, monospace;
+  --font-screen: Silkscreen, "Press Start 2P", monospace;
+
+  /* The tracking a small caps group label carries. */
+  --tracking-caps: 0.12em;
+
+  /* Nothing in this interface is soft-edged: every shadow is a hard offset
+   * block, the way a printed sticker throws one. */
+  --shadow-press: 3px 3px 0 var(--color-shadow); /* a raised button at rest */
+  --shadow-press-in: 2px 2px 0 var(--color-shadow); /* the same, pushed */
+  --shadow-lift: 5px 5px 0 var(--color-shadow); /* a card under the pointer */
+  /* Through a colour token, not an inline `rgba`: Tailwind resolves a
+   * shadow's colour into the utility itself, so an inline one could not be
+   * redressed after dark, while a `var()` still can. */
+  --shadow-modal: 10px 10px 0 var(--color-cast);
+  --shadow-modal-soft: 10px 10px 0 var(--color-cast-soft);
+}
+
+/* ── Fonts ─────────────────────────────────────────────────────────────
+ * The same Google Fonts woff2 subsets the design shipped with, vendored so
+ * the app draws correctly with no network. Ranges are verbatim. */
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/press-start-2p-400-cyrillic-ext.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/press-start-2p-400-cyrillic.woff2") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/press-start-2p-400-greek.woff2") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/press-start-2p-400-latin-ext.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/press-start-2p-400-latin.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+/*
+ * Silkscreen's Cyrillic, which Silkscreen itself does not have.
+ *
+ * Mr.Enot's adaptation of Kottke's face, carrying the Cyrillic the original
+ * has none of. It joins the same family under a `unicode-range` that claims
+ * only Cyrillic, so the browser picks it per glyph: Russian and Ukrainian are
+ * set in Silkscreen instead of falling through to Press Start 2P, and every
+ * Latin line still comes from the original.
+ *
+ * The range is deliberately narrow rather than the whole font. This
+ * adaptation dropped the accented Latin the original carries — no umlauts, no
+ * cedillas, not even an em dash — so letting it answer for anything outside
+ * Cyrillic would lose glyphs the app uses. Split this way, neither face has
+ * to cover for the other.
+ *
+ * A TTF rather than a subset woff2, because it is what the adaptation ships
+ * as; at 41KB inside the bundle that is not worth a conversion step.
+ */
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/silkscreen-400-cyrillic-mr-enot.ttf") format('truetype');
+  unicode-range: U+0400-04FF, U+0500-052F, U+2116;
+}
+
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/silkscreen-400-latin-ext.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/silkscreen-400-latin.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/silkscreen-700-latin-ext.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/silkscreen-700-latin.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ── The palette, after dark ───────────────────────────────────────────
+ * octet-android's dark palette, role for role. The light one above is that
+ * app's light palette already — all thirteen shared roles carry the same hex
+ * — so these are its counterparts rather than anything invented here:
+ *
+ *   ink → ink            paper → bg           panel → searchBg
+ *   card → slotBgOff     rule-soft → langDivider   rule → line
+ *   rule-mid → starOff   faint → mutedFaint   dim → mutedLight
+ *   mute → muted         hover-face, empty → rowOpen
+ *   selected → slotBgOn  shadow → divider
+ *
+ * Only the four roles the phone has no counterpart for are derived: `slate`
+ * keeps its position between `mute` and `ink`, and the three hovers step away
+ * from their own ground — which means lightening here rather than darkening,
+ * since on a dark ground that is what standing out looks like. The phone does
+ * the same with its own selected row.
+ *
+ * The accent and its text do not move; neither does the room a cartridge runs
+ * in, or the inks that sit over artwork.
+ *
+ * Written as variable overrides rather than a second `@theme`: every utility
+ * in the app already resolves through `var(--color-*)`, so redefining the
+ * variable redresses the whole interface and no component knows a theme
+ * exists. Both selectors carry the same block — the media query for the
+ * system's own setting, `[data-theme]` for the THEME picker overriding it in
+ * either direction. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-ink: #d2d5d8;
+    --color-paper: #17181a;
+    --color-panel: #202225;
+    --color-card: #292c30;
+
+    --color-rule-soft: #2a2e33;
+    --color-rule: #33383d;
+    --color-rule-mid: #4a5057;
+
+    --color-faint: #61666d;
+    --color-dim: #7b8189;
+    --color-mute: #9298a0;
+    --color-slate: #afb4ba;
+
+    --color-hover-row: #2e3136;
+    --color-hover-panel: #282b2f;
+    --color-hover-btn: #33383d;
+    --color-hover-face: #25282c;
+    --color-empty: #25282c;
+    --color-selected: #32363b;
+    --color-shadow: #0b0c0e;
+
+    --color-scrim: rgba(0, 0, 0, 0.82);
+    --color-scrim-soft: rgba(0, 0, 0, 0.72);
+    --color-cast: rgba(0, 0, 0, 0.72);
+    --color-cast-soft: rgba(0, 0, 0, 0.66);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-ink: #d2d5d8;
+  --color-paper: #17181a;
+  --color-panel: #202225;
+  --color-card: #292c30;
+
+  --color-rule-soft: #2a2e33;
+  --color-rule: #33383d;
+  --color-rule-mid: #4a5057;
+
+  --color-faint: #61666d;
+  --color-dim: #7b8189;
+  --color-mute: #9298a0;
+  --color-slate: #afb4ba;
+
+  --color-hover-row: #2e3136;
+  --color-hover-panel: #282b2f;
+  --color-hover-btn: #33383d;
+  --color-hover-face: #25282c;
+  --color-empty: #25282c;
+  --color-selected: #32363b;
+  --color-shadow: #0b0c0e;
+
+  --color-scrim: rgba(0, 0, 0, 0.82);
+  --color-scrim-soft: rgba(0, 0, 0, 0.72);
+  --color-cast: rgba(0, 0, 0, 0.72);
+  --color-cast-soft: rgba(0, 0, 0, 0.66);
+}
+
+
+/* ── Base ──────────────────────────────────────────────────────────────
+ * The design's own base rules, less the canvas backdrop: here the window is
+ * the artboard, so the shell paints the ground itself.
+ *
+ * These live in the `base` layer on purpose. Unlayered CSS outranks every
+ * layered rule, so a bare `input { font-family }` here would quietly beat any
+ * font utility put on an input. In the layer, utilities win, as they should. */
+@layer base {
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--color-paper);
+    font-family: var(--font-pixel);
+    /* Every size in the design comes from a `font` shorthand, which resets
+     * line-height to normal. Anything wanting leading asks for it. */
+    line-height: normal;
+    overflow: hidden;
+    cursor: default;
+    user-select: none;
+  }
+
+  #root {
+    height: 100%;
+  }
+
+  a {
+    color: var(--color-accent);
+  }
+
+  a:hover {
+    color: var(--color-accent-deep);
+  }
+
+  input {
+    font-family: var(--font-pixel);
+    user-select: text;
+  }
+
+  input::placeholder {
+    color: var(--color-dim);
+  }
+
+  /* Headings carry a user-agent margin, a size and a bold weight, none of
+   * which this design asks for: the margin alone pushes every pane down by
+   * most of a line. Preflight would have handled this, but preflight also
+   * forces border-box, which the layout cannot have — so the parts of it that
+   * are actually wanted are spelled out here instead. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  figure,
+  blockquote {
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  /* A keycap is styled like everything else, not in the platform monospace. */
+  kbd,
+  samp,
+  code,
+  pre {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  /* Everything clickable in this interface is a button, but none of it should
+   * look like one. Without preflight a button keeps its platform face — a grey
+   * fill, an outset border, its own font, and 1px of block padding that would
+   * make every row two pixels too tall in a content-box layout. */
+  button {
+    appearance: none;
+    /* Buttons are the one element a browser sizes border-box by default.
+     * Everything in this design is measured content-box, so a 38px-tall
+     * button with a 2px border has to come out 42px like its div would. */
+    box-sizing: content-box;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+  }
+
+  * {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The window scrolls, but never shows that it does. */
+  #oct-win * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  #oct-win *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+/* ── Scanlines ─────────────────────────────────────────────────────────
+ * The same two-pixel comb over anything standing in for a screen, at the
+ * four strengths the design uses. Named, because a repeating-gradient
+ * spelled out at each call site is unreadable. */
+@utility scanlines-card {
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0 2px, transparent 2px 4px);
+}
+
+@utility scanlines-shot {
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.14) 0 2px, transparent 2px 4px);
+}
+
+@utility scanlines-picture {
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0 2px, transparent 2px 4px);
+}
+
+@utility scanlines-preview {
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0 2px, transparent 2px 4px);
+}
