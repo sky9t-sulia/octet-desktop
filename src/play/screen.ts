@@ -48,6 +48,14 @@ export type Look = {
   scanline: number;
   /** 0 to 0.5. */
   mask: number;
+  /**
+   * Decode the signal rather than look the colour up.
+   *
+   * The console emits a wave, not a colour: the same eight identities a
+   * television blurs into one tint stay eight separate pixels if they are
+   * only looked up. Costs a dozen taps a pixel on the GPU.
+   */
+  composite?: boolean;
 };
 
 /** The knob values for one filter and the scanline toggle, as Android sets them. */
@@ -56,7 +64,9 @@ export function knobs(filter: "sharp" | "smooth" | "crt", scanlines: boolean) {
   // SHARP takes no scanlines even with the setting on — the same rule
   // `Play.Knobs.scanline` applies.
   const scanline = !scanlines ? 0 : filter === "smooth" ? 5 : filter === "crt" ? 8 : 0;
-  return { scanline: scanline / 10, mask: mask / 10 };
+  // The tube setting is the one that asks for a television, so it is the one
+  // that decodes the signal rather than looking the colour up.
+  return { scanline: scanline / 10, mask: mask / 10, composite: filter === "crt" };
 }
 
 function compile(gl: WebGLRenderingContext, kind: number, source: string) {
@@ -82,20 +92,20 @@ export class Screen {
   private sized = false;
 
   /**
-   * The palette, packed as the bytes an RGBA texture wants.
-   *
-   * A `Uint32Array` so expanding a frame is one indexed load and one store per
-   * pixel. Byte order is the machine's, which is the order the texture reads
-   * them in, so the two agree without swapping anything.
+   * The frame as the PPU's own identities, packed for the texture: the palette
+   * entry in red, the emphasis in green. The shader turns them into light,
+   * either through the palette or by decoding the signal.
    */
-  private lut = new Uint32Array(512);
-  /** The expanded frame, reused so a frame does not allocate. */
-  private rgba = new Uint8Array(WIDTH * HEIGHT * 4);
-  private rgba32 = new Uint32Array(this.rgba.buffer);
+  private cells = new Uint8Array(WIDTH * HEIGHT * 4);
+  /** Every colour, as a 512 by 1 texture the shader indexes. */
+  private paletteBytes = new Uint8Array(512 * 4);
+  private paletteTex: WebGLTexture | null = null;
   /** The emphasis of each scanline, from the frame's own header. */
   private emphasis = new Uint8Array(HEIGHT);
 
   private look: Look = { scale: "pixel", scanline: 0, mask: 0 };
+  /** Which frame the burst is on, counted so the crawl walks as it did. */
+  private field = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     // The shaders are GLSL ES 1.00, which a WebGL2 context still accepts —
@@ -161,19 +171,26 @@ export class Screen {
    * disagree with the emulator about what a colour is.
    */
   setPalette(colours: number[]) {
-    const lut = new Uint32Array(512);
-    // A byte view of one entry, so the machine's own order is what gets used.
-    const one = new Uint32Array(1);
-    const bytes = new Uint8Array(one.buffer);
-    for (let i = 0; i < lut.length; i++) {
+    const bytes = this.paletteBytes;
+    for (let i = 0; i < 512; i++) {
       const c = colours[i] ?? 0;
-      bytes[0] = (c >> 16) & 0xff;
-      bytes[1] = (c >> 8) & 0xff;
-      bytes[2] = c & 0xff;
-      bytes[3] = 0xff;
-      lut[i] = one[0];
+      bytes[i * 4] = (c >> 16) & 0xff;
+      bytes[i * 4 + 1] = (c >> 8) & 0xff;
+      bytes[i * 4 + 2] = c & 0xff;
+      bytes[i * 4 + 3] = 0xff;
     }
-    this.lut = lut;
+    const gl = this.gl;
+    if (!this.paletteTex) {
+      this.paletteTex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, this.paletteTex);
+      // One texel per colour, taken exactly: nothing here is to be blended.
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.paletteTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
   }
 
   setLook(look: Look) {
@@ -194,7 +211,7 @@ export class Screen {
     const indices = bytes.subarray(from, from + WIDTH * HEIGHT);
     if (indices.length < WIDTH * HEIGHT) return false;
 
-    this.expand(indices);
+    this.pack(indices);
     this.paint();
     return true;
   }
@@ -205,13 +222,15 @@ export class Screen {
    * One load and one store per pixel, both into typed arrays. The emphasis of
    * a line shifts the identity by 64, which is where the emulator put it.
    */
-  private expand(indices: Uint8Array) {
-    const { lut, rgba32, emphasis } = this;
+  private pack(indices: Uint8Array) {
+    const { cells, emphasis } = this;
     let at = 0;
     for (let y = 0; y < HEIGHT; y++) {
-      const base = emphasis[y] << 6;
+      const emph = emphasis[y];
       for (let x = 0; x < WIDTH; x++, at++) {
-        rgba32[at] = lut[indices[at] + base];
+        cells[at * 4] = indices[at];
+        cells[at * 4 + 1] = emph;
+        cells[at * 4 + 3] = 0xff;
       }
     }
   }
@@ -255,16 +274,25 @@ export class Screen {
     if (this.sized) {
       // Refilled rather than remade; remaking waits on the last frame's read.
       gl.texSubImage2D(
-        gl.TEXTURE_2D, 0, 0, 0, WIDTH, HEIGHT, gl.RGBA, gl.UNSIGNED_BYTE, this.rgba,
+        gl.TEXTURE_2D, 0, 0, 0, WIDTH, HEIGHT, gl.RGBA, gl.UNSIGNED_BYTE, this.cells,
       );
     } else {
       gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA, WIDTH, HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.rgba,
+        gl.TEXTURE_2D, 0, gl.RGBA, WIDTH, HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.cells,
       );
       this.sized = true;
     }
 
     gl.uniform1i(this.place("picture"), 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.paletteTex);
+    gl.uniform1i(this.place("palette"), 1);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1f(this.place("identities"), 1);
+    gl.uniform1f(this.place("composite"), this.look.composite ? 1 : 0);
+    // The burst walks on between frames, and the crawl walks with it.
+    gl.uniform1f(this.place("field"), this.field);
+    this.field = (this.field + 1) % 3;
     // How many real pixels one console pixel became — square, both ways.
     gl.uniform2f(this.place("grain"), across / WIDTH, down / HEIGHT);
     gl.uniform1f(this.place("scanline"), this.look.scanline);
