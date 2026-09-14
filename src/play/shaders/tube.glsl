@@ -10,6 +10,17 @@ uniform sampler2D picture;
 /** Every colour the PPU can emit, emphasis folded in: 512 across, one down. */
 uniform sampler2D palette;
 /**
+ * The decoded signal, one texel per console pixel.
+ *
+ * What a decode gives depends on nothing but which console pixel is being
+ * asked for, and a screen has far more pixels than the console does — so it
+ * is done once for each of the 61440 and read back here, rather than again
+ * for every one of the two million fragments a phone's screen has.
+ */
+uniform sampler2D signal;
+/** 1 while the pass that fills `signal` is running, 0 while the tube draws. */
+uniform float decoding;
+/**
  * What the picture holds: 0 for colour already expanded, 1 for the PPU's own
  * identities. A front end that sets neither of these gets the picture put up
  * exactly as it hands it over, which is what the older path did.
@@ -156,7 +167,7 @@ vec3 source(vec2 at) {
     if (identities < 0.5) {
         return texture2D(picture, at).rgb;
     }
-    return composite > 0.5 ? decode(at) : lookup(identity(at));
+    return composite > 0.5 ? texture2D(signal, at).rgb : lookup(identity(at));
 }
 
 /** One console pixel, in light, or nothing beyond the edge of the picture. */
@@ -202,6 +213,12 @@ vec3 alongLine(vec2 pos) {
 }
 
 void main() {
+    // The first pass writes one decoded console pixel and stops there.
+    if (decoding > 0.5) {
+        gl_FragColor = vec4(decode(spot), 1.0);
+        return;
+    }
+
     vec3 here;
     if (scanline > 0.0 || mask > 0.0) {
         here = alongLine(spot);

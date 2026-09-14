@@ -84,6 +84,9 @@ export class Screen {
   private gl: WebGLRenderingContext;
   private program: WebGLProgram;
   private picture: WebGLTexture;
+  /** The decoded signal, one texel per console pixel, and where it is drawn. */
+  private signal: WebGLTexture | null = null;
+  private signalFbo: WebGLFramebuffer | null = null;
   private quad: WebGLBuffer;
   private places = new Map<string, WebGLUniformLocation | null>();
   private corner: number;
@@ -152,6 +155,31 @@ export class Screen {
 
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
+  }
+
+  /**
+   * Build the small picture the decode writes into, the first time it is
+   * wanted. Nothing is blended out of it: the tube reads one texel per
+   * console pixel and does its own softening.
+   */
+  private signalTarget() {
+    const gl = this.gl;
+    if (this.signal) return;
+    this.signal = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, this.signal);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA, WIDTH, HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null,
+    );
+    this.signalFbo = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.signalFbo);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.signal, 0,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   /** Where `name` lives, looked up once — asking by name goes through the driver. */
@@ -264,9 +292,6 @@ export class Screen {
     const right = (wide + across) / 2;
     const bottom = (high + down) / 2;
 
-    gl.viewport(0, 0, wide, high);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.program);
 
     gl.activeTexture(gl.TEXTURE0);
@@ -293,6 +318,35 @@ export class Screen {
     // The burst walks on between frames, and the crawl walks with it.
     gl.uniform1f(this.place("field"), this.field);
     this.field = (this.field + 1) % 3;
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
+    gl.enableVertexAttribArray(this.corner);
+    gl.vertexAttribPointer(this.corner, 2, gl.FLOAT, false, 0, 0);
+
+    // Decode the signal once for each console pixel, into its own small
+    // picture. A screen has a hundred times as many fragments as the console
+    // has pixels, and the decode gives the same answer across all of them.
+    if (this.look.composite) {
+      this.signalTarget();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.signalFbo);
+      gl.viewport(0, 0, WIDTH, HEIGHT);
+      gl.uniform1f(this.place("decoding"), 1);
+      // Drawn the other way up: a texture's first row is the one at the
+      // bottom of what is drawn into it, while the picture's first row is its
+      // top, and the tube reads the small picture the same way as the large.
+      gl.uniform4f(this.place("into"), -1, -1, 1, 1);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.uniform1f(this.place("decoding"), 0);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.signal);
+      gl.uniform1i(this.place("signal"), 2);
+      gl.activeTexture(gl.TEXTURE0);
+    }
+
+    gl.viewport(0, 0, wide, high);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     // How many real pixels one console pixel became — square, both ways.
     gl.uniform2f(this.place("grain"), across / WIDTH, down / HEIGHT);
     gl.uniform1f(this.place("scanline"), this.look.scanline);
@@ -307,9 +361,6 @@ export class Screen {
       1 - (bottom / high) * 2,
     );
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
-    gl.enableVertexAttribArray(this.corner);
-    gl.vertexAttribPointer(this.corner, 2, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.disableVertexAttribArray(this.corner);
   }
@@ -317,6 +368,8 @@ export class Screen {
   close() {
     const gl = this.gl;
     gl.deleteTexture(this.picture);
+    if (this.signal) gl.deleteTexture(this.signal);
+    if (this.signalFbo) gl.deleteFramebuffer(this.signalFbo);
     gl.deleteBuffer(this.quad);
     gl.deleteProgram(this.program);
   }
