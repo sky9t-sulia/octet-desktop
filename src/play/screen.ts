@@ -166,6 +166,9 @@ export class Screen {
     const gl = this.gl;
     if (this.signal) return;
     this.signal = gl.createTexture()!;
+    // On its own unit, so making it does not disturb the picture sitting on
+    // the one the drawing below expects to find it on.
+    gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.signal);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -180,6 +183,7 @@ export class Screen {
       gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.signal, 0,
     );
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   /** Where `name` lives, looked up once — asking by name goes through the driver. */
@@ -328,6 +332,12 @@ export class Screen {
     // has pixels, and the decode gives the same answer across all of them.
     if (this.look.composite) {
       this.signalTarget();
+      // Let go of it before drawing into it. A texture read and written in
+      // the same pass is a loop, and a context that notices refuses the whole
+      // draw rather than giving it whatever it finds.
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.activeTexture(gl.TEXTURE0);
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.signalFbo);
       gl.viewport(0, 0, WIDTH, HEIGHT);
       gl.uniform1f(this.place("decoding"), 1);
